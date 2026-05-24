@@ -7,9 +7,9 @@ from datetime import datetime
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QListWidget, QListWidgetItem, QFileDialog,
-    QMessageBox, QProgressBar
+    QMessageBox, QProgressBar, QDialog
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSize
 from PyQt5.QtGui import QFont, QDragEnterEvent, QDropEvent
 
 
@@ -115,7 +115,7 @@ def extract_invoice_data(path):
 
 
     # ======== 项目名称 ======== 
-    # 文件名用 “-” 分割，取倒一
+    # 文件名用 "-" 分割，取倒一
 
     try:
         m = re.findall(r"\*([\u4e00-\u9fa5A-Z0-9]+)\*", full_text)
@@ -126,7 +126,7 @@ def extract_invoice_data(path):
 
 
     # ======== 规格型号 ========
-    # 文件名用 “-” 分割，取倒一
+    # 文件名用 "-" 分割，取倒一
 
     try:
         a = re.findall(r"\*[\u4e00-\u9fa5A-Z0-9]+\*[\w\u4e00-\u9fa5A-Z0-9]+\n([\w\u4e00-\u9fa5A-Z0-9]+)", full_text)
@@ -150,7 +150,7 @@ def extract_invoice_data(path):
 # ========== batch_invoices_to_excel ========== #
 #遍历文件 + 提取信息
 
-def process_pdfs_to_excel(file_paths, save_path):
+def process_pdfs_to_excel(file_paths, save_path, columns_order=None):
 
     records = []
     for path in file_paths:
@@ -161,32 +161,35 @@ def process_pdfs_to_excel(file_paths, save_path):
     if not records:
         return None
 
-    # 定义列顺序：同一种data分到一列
-    columns = [
+    # 定义默认列顺序
+    default_columns = [
         "文件名", "类型", "项目名称", "单价", "数量", 
         "单位", "金额", "发票号码", 
         "开票日期", "供应商", "规格型号","付款人"
     ]
 
+    columns = columns_order if columns_order else default_columns
+
     df = pd.DataFrame(records)
-    # 确保列顺序统一，缺失列补空字符串
-    for col in columns:
+    # 确保所有默认列存在，缺失列补空字符串
+    for col in default_columns:
         if col not in df.columns:
             df[col] = ""
-    df = df[columns]
-
+    
+    # 先计算汇总（使用完整数据，不受用户删除列的影响）
     df["金额"] = pd.to_numeric(df["金额"], errors="coerce")
-
     summary = df.groupby("付款人", as_index=False)["金额"].sum()
-
     summary["金额合计"] = summary["金额"].apply(lambda x: f"¥{x:.2f}")
-
     summary = summary[["付款人", "金额合计"]]
+
+    # 再按用户指定顺序和选择输出列
+    output_columns = [col for col in columns if col in df.columns]
+    df_output = df[output_columns]
 
     with pd.ExcelWriter(save_path, engine="openpyxl") as writer:
     
-        # Sheet 1：原始明细
-        df.to_excel(writer, sheet_name="发票明细", index=False)
+        # Sheet 1：按用户指定列顺序和筛选输出
+        df_output.to_excel(writer, sheet_name="发票明细", index=False)
         
         # Sheet 2：每人合计
         summary.to_excel(writer, sheet_name="按人汇总", index=False)
@@ -195,16 +198,253 @@ def process_pdfs_to_excel(file_paths, save_path):
     return save_path
 
 
+# ================== 列顺序确认对话框 ==================
+class ColumnOrderDialog(QDialog):
+    def __init__(self, default_columns, parent=None):
+        super().__init__(parent)
+        self.default_columns = default_columns[:]
+        self.setWindowTitle("确认输出列顺序")
+        self.setFixedSize(460, 600)
+        
+        layout = QVBoxLayout(self)
+        layout.setSpacing(0)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # === 顶部标题栏 ===
+        header = QWidget()
+        header.setStyleSheet("background-color: #B91C1C; border-top-left-radius: 10px; border-top-right-radius: 10px;")
+        header_layout = QVBoxLayout(header)
+        header_layout.setContentsMargins(24, 24, 24, 20)
+        
+        title = QLabel("确认输出列顺序")
+        title_font = QFont("Yuanti SC", 18, QFont.Bold)
+        title.setFont(title_font)
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet("color: #ffffff;")
+        header_layout.addWidget(title)
+        
+        subtitle = QLabel("拖拽调整顺序 · 点击 ✕ 删除不需要的列")
+        subtitle.setAlignment(Qt.AlignCenter)
+        subtitle.setStyleSheet("color: #FECACA; font-size: 13px; margin-top: 4px;")
+        header_layout.addWidget(subtitle)
+        
+        layout.addWidget(header)
+
+        # === 内容区 ===
+        content = QWidget()
+        content.setStyleSheet("background-color: #ffffff;")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(24, 20, 24, 16)
+        content_layout.setSpacing(12)
+        
+        hint = QLabel("提示：长按 ☰ 上下拖拽调整顺序，点击右侧 ✕ 移除列")
+        hint.setStyleSheet("color: #9CA3AF; font-size: 12px; padding: 8px 12px; background: #F9FAFB; border-radius: 6px;")
+        hint.setWordWrap(True)
+        content_layout.addWidget(hint)
+
+        # 可拖拽列表
+        self.list_widget = QListWidget()
+        self.list_widget.setDragDropMode(QListWidget.InternalMove)
+        self.list_widget.setStyleSheet("""
+            QListWidget {
+                border: 1px solid #E5E7EB;
+                border-radius: 10px;
+                padding: 10px;
+                font-size: 14px;
+                background-color: #FAFAFA;
+            }
+            QListWidget::item {
+                padding: 0px;
+                margin: 5px 2px;
+                border-radius: 8px;
+                border: 1px solid #F3F4F6;
+                background: #ffffff;
+            }
+            QListWidget::item:selected {
+                background: #FEE2E2;
+                border: 1px solid #FCA5A5;
+            }
+        """)
+        
+        for col in default_columns:
+            self._add_column_item(col)
+            
+        content_layout.addWidget(self.list_widget)
+        layout.addWidget(content, stretch=1)
+
+        # === 底部按钮栏 ===
+        footer = QWidget()
+        footer.setStyleSheet("background-color: #F9FAFB; border-bottom-left-radius: 10px; border-bottom-right-radius: 10px;")
+        footer_layout = QHBoxLayout(footer)
+        footer_layout.setContentsMargins(24, 16, 24, 20)
+        footer_layout.setSpacing(12)
+        
+        self.btn_reset = QPushButton("恢复默认")
+        self.btn_reset.setFixedHeight(40)
+        self.btn_reset.setCursor(Qt.PointingHandCursor)
+        self.btn_reset.setStyleSheet("""
+            QPushButton {
+                background-color: #E5E7EB;
+                color: #4B5563;
+                border: none;
+                border-radius: 8px;
+                padding: 0 18px;
+                font-size: 13px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #D1D5DB;
+            }
+            QPushButton:pressed {
+                background-color: #9CA3AF;
+            }
+        """)
+        self.btn_reset.clicked.connect(self.reset_columns)
+        
+        self.btn_cancel = QPushButton("取消")
+        self.btn_cancel.setFixedHeight(40)
+        self.btn_cancel.setCursor(Qt.PointingHandCursor)
+        self.btn_cancel.setStyleSheet("""
+            QPushButton {
+                background-color: #ffffff;
+                color: #6B7280;
+                border: 1px solid #E5E7EB;
+                border-radius: 8px;
+                padding: 0 24px;
+                font-size: 14px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #F9FAFB;
+                border-color: #D1D5DB;
+            }
+            QPushButton:pressed {
+                background-color: #F3F4F6;
+            }
+        """)
+        self.btn_cancel.clicked.connect(self.reject)
+        
+        self.btn_ok = QPushButton("确认输出")
+        self.btn_ok.setFixedHeight(40)
+        self.btn_ok.setCursor(Qt.PointingHandCursor)
+        self.btn_ok.setStyleSheet("""
+            QPushButton {
+                background-color: #B91C1C;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 0 28px;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #991B1B;
+            }
+            QPushButton:pressed {
+                background-color: #7F1D1D;
+            }
+        """)
+        self.btn_ok.clicked.connect(self.on_confirm)
+        
+        footer_layout.addWidget(self.btn_reset)
+        footer_layout.addStretch()
+        footer_layout.addWidget(self.btn_cancel)
+        footer_layout.addWidget(self.btn_ok)
+        layout.addWidget(footer)
+        
+        # 对话框整体圆角和阴影效果
+        self.setStyleSheet("""
+            QDialog {
+                background-color: transparent;
+                border-radius: 10px;
+            }
+        """)
+
+    def _add_column_item(self, col_name):
+        item = QListWidgetItem()
+        item.setSizeHint(QSize(0, 52))
+        item.setFlags(item.flags() | Qt.ItemIsEnabled)
+        self.list_widget.addItem(item)
+        
+        widget = QWidget()
+        hlayout = QHBoxLayout(widget)
+        hlayout.setContentsMargins(16, 0, 12, 0)
+        hlayout.setSpacing(12)
+        
+        drag_label = QLabel("☰")
+        drag_label.setStyleSheet("font-size: 15px; color: #D1D5DB; border: none; background: transparent;")
+        hlayout.addWidget(drag_label)
+        
+        name_label = QLabel(col_name)
+        name_label.setStyleSheet("font-size: 15px; color: #374151; font-weight: 500; border: none; background: transparent;")
+        hlayout.addWidget(name_label, stretch=1)
+        
+        btn_delete = QPushButton("✕")
+        btn_delete.setFixedSize(28, 28)
+        btn_delete.setCursor(Qt.PointingHandCursor)
+        btn_delete.setStyleSheet("""
+            QPushButton {
+                background-color: #F3F4F6;
+                color: #9CA3AF;
+                border: none;
+                border-radius: 14px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #FEE2E2;
+                color: #B91C1C;
+            }
+            QPushButton:pressed {
+                background-color: #FECACA;
+            }
+        """)
+        btn_delete.clicked.connect(lambda checked, i=item: self.delete_item(i))
+        hlayout.addWidget(btn_delete)
+        
+        self.list_widget.setItemWidget(item, widget)
+    
+    def delete_item(self, item):
+        row = self.list_widget.row(item)
+        self.list_widget.takeItem(row)
+    
+    def reset_columns(self):
+        self.list_widget.clear()
+        for col in self.default_columns:
+            self._add_column_item(col)
+    
+    def on_confirm(self):
+        if self.list_widget.count() == 0:
+            QMessageBox.warning(self, "提示", "至少需要保留一列才能输出！")
+            return
+        self.accept()
+
+    def get_order(self):
+        columns = []
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            widget = self.list_widget.itemWidget(item)
+            if widget:
+                labels = widget.findChildren(QLabel)
+                for label in labels:
+                    text = label.text().strip()
+                    if text and text != "☰":
+                        columns.append(text)
+                        break
+        return columns
+
+
 # ================== 后台线程 ==================
 class Worker(QThread):
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
     progress = pyqtSignal(int)
 
-    def __init__(self, file_paths, save_path):
+    def __init__(self, file_paths, save_path, columns_order=None):
         super().__init__()
         self.file_paths = file_paths
         self.save_path = save_path
+        self.columns_order = columns_order
 
     def run(self):
         try:
@@ -212,7 +452,7 @@ class Worker(QThread):
             for i, _ in enumerate(self.file_paths, 1):
                 self.progress.emit(int(i / total * 100))
 
-            result = process_pdfs_to_excel(self.file_paths, self.save_path)
+            result = process_pdfs_to_excel(self.file_paths, self.save_path, self.columns_order)
             if result:
                 self.finished.emit(result)
             else:
@@ -225,8 +465,8 @@ class Worker(QThread):
 class InvoiceWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("机器人实验室发票报销小程序 · 3.4")
-        self.setGeometry(543, 124, 600, 800)
+        self.setWindowTitle("机器人实验室发票报销小程序")
+        self.setGeometry(543, 124, 560, 780)
         self.setAcceptDrops(True)
 
         self.pdf_files = []
@@ -236,117 +476,215 @@ class InvoiceWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
-        layout.setSpacing(16)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(0)
+        layout.setContentsMargins(0, 0, 0, 0)
 
-        # 标题
+        # === 顶部标题栏 ===
+        header = QWidget()
+        header.setStyleSheet("background-color: #B91C1C;")
+        header_layout = QVBoxLayout(header)
+        header_layout.setContentsMargins(28, 32, 28, 24)
+        header_layout.setSpacing(6)
+
         title = QLabel("低值及耗材类采购申请明细")
-        title_font = QFont("PingFang SC", 20, QFont.Bold)
+        title_font = QFont("Yuanti SC", 22, QFont.Bold)
         title.setFont(title_font)
         title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet("color: #B22222; margin-bottom: 10px;")
-        layout.addWidget(title)
+        title.setStyleSheet("color: #ffffff;")
+        header_layout.addWidget(title)
+
+        version = QLabel("机器人实验室 · 发票报销小程序 v4.0")
+        version.setAlignment(Qt.AlignCenter)
+        version.setStyleSheet("color: #FECACA; font-size: 13px;")
+        header_layout.addWidget(version)
+
+        layout.addWidget(header)
+
+        # === 主体内容区 ===
+        body = QWidget()
+        body.setStyleSheet("background-color: #F9FAFB;")
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(28, 24, 28, 20)
+        body_layout.setSpacing(16)
 
         # 拖拽区
-        self.drop_label = QLabel("拖拽 PDF 发票文件\n或点击下方按钮选择文件")
+        self.drop_label = QLabel("拖拽 PDF 发票文件到此处\n或点击下方按钮选择文件")
         self.drop_label.setAlignment(Qt.AlignCenter)
-        self.drop_label.setMinimumHeight(100)
+        self.drop_label.setMinimumHeight(110)
         self.drop_label.setStyleSheet("""
             QLabel {
-                background-color: #fdf2f2;
-                border: 2px solid #B22222;
-                border-radius: 11px;
-                color: #666666;
+                background-color: #ffffff;
+                border: 1px solid #E5E7EB;
+                border-radius: 14px;
+                color: #9CA3AF;
                 font-size: 14px;
                 padding: 20px;
+                line-height: 1.6;
             }
         """)
-        layout.addWidget(self.drop_label)
+        body_layout.addWidget(self.drop_label)
 
         # 按钮行
         btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(12)
 
-        self.btn_add = QPushButton("✚ 选择 PDF 文件")
-        self.btn_add.setStyleSheet(self._btn_style("#B22222"))
+        self.btn_add = QPushButton("选择 PDF 文件")
+        self.btn_add.setFixedHeight(42)
+        self.btn_add.setCursor(Qt.PointingHandCursor)
+        self.btn_add.setStyleSheet("""
+            QPushButton {
+                background-color: #B91C1C;
+                color: white;
+                border: none;
+                border-radius: 10px;
+                padding: 0 20px;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #991B1B;
+            }
+            QPushButton:pressed {
+                background-color: #7F1D1D;
+            }
+            QPushButton:disabled {
+                background-color: #E5E7EB;
+                color: #9CA3AF;
+            }
+        """)
         self.btn_add.clicked.connect(self.select_files)
 
-        self.btn_clear = QPushButton("🗑️ 清空列表")
-        self.btn_clear.setStyleSheet(self._btn_style("#666666"))
+        self.btn_clear = QPushButton("清空列表")
+        self.btn_clear.setFixedHeight(42)
+        self.btn_clear.setCursor(Qt.PointingHandCursor)
+        self.btn_clear.setStyleSheet("""
+            QPushButton {
+                background-color: #ffffff;
+                color: #6B7280;
+                border: 1px solid #E5E7EB;
+                border-radius: 10px;
+                padding: 0 20px;
+                font-size: 14px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #F3F4F6;
+                border-color: #D1D5DB;
+            }
+            QPushButton:pressed {
+                background-color: #E5E7EB;
+            }
+            QPushButton:disabled {
+                background-color: #F9FAFB;
+                color: #D1D5DB;
+            }
+        """)
         self.btn_clear.clicked.connect(self.clear_files)
 
         btn_layout.addWidget(self.btn_add)
         btn_layout.addWidget(self.btn_clear)
-        layout.addLayout(btn_layout)
+        body_layout.addLayout(btn_layout)
+
+        # 文件列表标题
+        list_header_layout = QHBoxLayout()
+        list_title = QLabel("待处理文件")
+        list_title.setStyleSheet("color: #374151; font-size: 14px; font-weight: 600;")
+        list_header_layout.addWidget(list_title)
+        
+        self.file_count_label = QLabel("0 个文件")
+        self.file_count_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.file_count_label.setStyleSheet("color: #9CA3AF; font-size: 12px;")
+        list_header_layout.addWidget(self.file_count_label)
+        body_layout.addLayout(list_header_layout)
 
         # 文件列表
         self.list_widget = QListWidget()
         self.list_widget.setStyleSheet("""
             QListWidget {
-                border: 1px solid #dddddd;
-                border-radius: 6px;
-                padding: 5px;
+                border: 1px solid #E5E7EB;
+                border-radius: 10px;
+                padding: 8px;
                 font-size: 13px;
+                background-color: #ffffff;
             }
             QListWidget::item {
-                padding: 6px;
-                border-bottom: 1px solid #f0f0f0;
+                padding: 10px 12px;
+                margin: 3px 0px;
+                border-radius: 6px;
+                border: none;
+                color: #374151;
+            }
+            QListWidget::item:selected {
+                background-color: #FEE2E2;
+                color: #B91C1C;
+            }
+            QListWidget::item:hover {
+                background-color: #F9FAFB;
             }
         """)
-        layout.addWidget(self.list_widget)
+        body_layout.addWidget(self.list_widget, stretch=1)
 
         # 进度条
         self.progress = QProgressBar()
         self.progress.setValue(0)
         self.progress.setTextVisible(True)
+        self.progress.setFixedHeight(8)
         self.progress.setStyleSheet("""
             QProgressBar {
-                border: 1px solid #dddddd;
+                border: none;
                 border-radius: 4px;
                 text-align: center;
-                height: 20px;
+                background-color: #E5E7EB;
             }
             QProgressBar::chunk {
-                background-color: #B22222;
+                background-color: #B91C1C;
                 border-radius: 4px;
             }
         """)
-        layout.addWidget(self.progress)
+        body_layout.addWidget(self.progress)
 
         # 生成按钮
         self.btn_run = QPushButton("生成 Excel 明细")
-        self.btn_run.setStyleSheet(self._btn_style("#B22222", height=44))
-        run_font = QFont("PingFang SC", 12, QFont.Bold)
+        self.btn_run.setFixedHeight(50)
+        self.btn_run.setCursor(Qt.PointingHandCursor)
+        run_font = QFont("Yuanti SC", 14, QFont.Bold)
         self.btn_run.setFont(run_font)
-        self.btn_run.clicked.connect(self.run_extraction)
-        layout.addWidget(self.btn_run)
-
-        # 状态栏
-        self.status = QLabel("KAISEN ©")
-        self.status.setAlignment(Qt.AlignCenter)
-        self.status.setStyleSheet("color: #999999; font-size: 12px; margin-top: 8px;")
-        layout.addWidget(self.status)
-
-    def _btn_style(self, color, height=36):
-        return f"""
-            QPushButton {{
-                background-color: {color};
+        self.btn_run.setStyleSheet("""
+            QPushButton {
+                background-color: #B91C1C;
                 color: white;
                 border: none;
-                border-radius: 6px;
-                padding: 8px 16px;
+                border-radius: 12px;
                 font-size: 15px;
-                height: {height}px;
-            }}
-            QPushButton:hover {{
-                background-color: #8B0000;
-            }}
-            QPushButton:pressed {{
-                background-color: #660000;
-            }}
-            QPushButton:disabled {{
-                background-color: #cccccc;
-            }}
-        """
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #991B1B;
+            }
+            QPushButton:pressed {
+                background-color: #7F1D1D;
+            }
+            QPushButton:disabled {
+                background-color: #E5E7EB;
+                color: #9CA3AF;
+            }
+        """)
+        self.btn_run.clicked.connect(self.run_extraction)
+        body_layout.addWidget(self.btn_run)
+
+        layout.addWidget(body, stretch=1)
+
+        # === 底部状态栏 ===
+        footer = QWidget()
+        footer.setStyleSheet("background-color: #ffffff;")
+        footer_layout = QHBoxLayout(footer)
+        footer_layout.setContentsMargins(28, 12, 28, 12)
+        
+        self.status = QLabel("KAISEN ©")
+        self.status.setStyleSheet("color: #D1D5DB; font-size: 11px;")
+        footer_layout.addWidget(self.status)
+        
+        layout.addWidget(footer)
 
     # ================== 拖拽 ==================
     def dragEnterEvent(self, event: QDragEnterEvent):
@@ -358,7 +696,7 @@ class InvoiceWindow(QMainWindow):
             path = url.toLocalFile()
             if path.lower().endswith('.pdf') and path not in self.pdf_files:
                 self.pdf_files.append(path)
-                item = QListWidgetItem(f"📄 {os.path.basename(path)}")
+                item = QListWidgetItem(f"  {os.path.basename(path)}")
                 item.setToolTip(path)
                 self.list_widget.addItem(item)
         self._update_status()
@@ -371,7 +709,7 @@ class InvoiceWindow(QMainWindow):
         for path in paths:
             if path not in self.pdf_files:
                 self.pdf_files.append(path)
-                item = QListWidgetItem(f"📄 {os.path.basename(path)}")
+                item = QListWidgetItem(f"  {os.path.basename(path)}")
                 item.setToolTip(path)
                 self.list_widget.addItem(item)
         self._update_status()
@@ -383,16 +721,51 @@ class InvoiceWindow(QMainWindow):
 
     def _update_status(self):
         count = len(self.pdf_files)
-        self.status.setText(f"已加载 {count} 个 PDF 文件" if count else "KAISEN ©")
-        self.drop_label.setText(
-            f"已拖拽 {count} 个文件\n可继续拖拽追加" if count else "拖拽 PDF 文件到此处\n或点击下方按钮选择文件"
-        )
+        self.file_count_label.setText(f"{count} 个文件")
+        if count:
+            self.drop_label.setText(f"已加载 {count} 个 PDF 文件\n可继续拖拽追加更多文件")
+            self.drop_label.setStyleSheet("""
+                QLabel {
+                    background-color: #FEF2F2;
+                    border: 1px solid #E5E7EB;
+                    border-radius: 14px;
+                    color: #B91C1C;
+                    font-size: 14px;
+                    padding: 20px;
+                    line-height: 1.6;
+                }
+            """)
+        else:
+            self.drop_label.setText("拖拽 PDF 发票文件到此处\n或点击下方按钮选择文件")
+            self.drop_label.setStyleSheet("""
+                QLabel {
+                    background-color: #ffffff;
+                    border: 1px solid #E5E7EB;
+                    border-radius: 14px;
+                    color: #9CA3AF;
+                    font-size: 14px;
+                    padding: 20px;
+                    line-height: 1.6;
+                }
+            """)
 
     # ================== 核心处理 ==================
     def run_extraction(self):
         if not self.pdf_files:
             QMessageBox.warning(self, "提示", "请先拖拽或选择 PDF 文件")
             return
+
+        # 弹出列顺序确认对话框
+        default_columns = [
+            "文件名", "类型", "项目名称", "单价", "数量", 
+            "单位", "金额", "发票号码", 
+            "开票日期", "供应商", "规格型号", "付款人"
+        ]
+        dialog = ColumnOrderDialog(default_columns, self)
+        if dialog.exec_() != QDialog.Accepted:
+            return
+        
+        columns_order = dialog.get_order()
 
         default_name = f"{datetime.now().strftime('%Y%m')}低值及耗材类采购申请明细.xlsx"
         save_path, _ = QFileDialog.getSaveFileName(
@@ -407,7 +780,7 @@ class InvoiceWindow(QMainWindow):
         self.status.setText("正在提取数据，请稍候...")
         self.progress.setValue(0)
 
-        self.worker = Worker(self.pdf_files, save_path)
+        self.worker = Worker(self.pdf_files, save_path, columns_order)
         self.worker.progress.connect(self.progress.setValue)
         self.worker.finished.connect(self.on_success)
         self.worker.error.connect(self.on_error)
@@ -417,14 +790,37 @@ class InvoiceWindow(QMainWindow):
         self.btn_run.setEnabled(True)
         self.btn_add.setEnabled(True)
         self.btn_clear.setEnabled(True)
-        self.status.setText(f"✅ 完成：{os.path.basename(path)}")
+        self.status.setText("KAISEN ©")
+        self.progress.setValue(100)
 
-        reply = QMessageBox.question(
-            self, "处理完成", f"Excel 已保存到：\n{path}\n\n是否立即打开所在文件夹？",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes
-        )
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("处理完成")
+        msg_box.setText(f"<p style='font-size:14px;'>Excel 已保存到：</p><p style='color:#B91C1C;font-weight:600;'>{path}</p>")
+        msg_box.setInformativeText("是否立即打开所在文件夹？")
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg_box.setDefaultButton(QMessageBox.Yes)
+        msg_box.button(QMessageBox.Yes).setText("打开文件夹")
+        msg_box.button(QMessageBox.No).setText("关闭")
+        msg_box.setStyleSheet("""
+            QMessageBox {
+                background-color: #ffffff;
+            }
+            QPushButton {
+                background-color: #B91C1C;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 20px;
+                font-size: 13px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #991B1B;
+            }
+        """)
+        
+        reply = msg_box.exec_()
         if reply == QMessageBox.Yes:
-            # macOS 用 open 命令
             os.system(f'open "{os.path.dirname(path)}"')
 
     def on_error(self, msg):
@@ -432,18 +828,41 @@ class InvoiceWindow(QMainWindow):
         self.btn_add.setEnabled(True)
         self.btn_clear.setEnabled(True)
         self.progress.setValue(0)
-        self.status.setText("❌ 处理失败")
-        QMessageBox.critical(self, "错误", msg)
+        self.status.setText("KAISEN ©")
+        
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("错误")
+        msg_box.setText(f"处理失败")
+        msg_box.setInformativeText(msg)
+        msg_box.setIcon(QMessageBox.Critical)
+        msg_box.setStyleSheet("""
+            QMessageBox {
+                background-color: #ffffff;
+            }
+            QPushButton {
+                background-color: #B91C1C;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 20px;
+                font-size: 13px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #991B1B;
+            }
+        """)
+        msg_box.exec_()
 
 
 # ================== MAIN ==================
 if __name__ == '__main__':
     app = QApplication(sys.argv)
 
-    # 修复：使用 macOS 字体
-    font = QFont("PingFang SC", 10)
+    # 使用圆润中文字体
+    font = QFont("Yuanti SC", 10)
     if not QFont(font).exactMatch():
-        font = QFont("Helvetica Neue", 10)
+        font = QFont("PingFang SC", 10)
     app.setFont(font)
 
     window = InvoiceWindow()
