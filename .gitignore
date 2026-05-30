@@ -1,9 +1,2 @@
-# 忽略所有 .log 日志文件
-*.log
-
-# 忽略 node_modules 整个文件夹（前端必备）
-node_modules/
-
-# 忽略 .env 环境变量（密码不能提交）
-.env
+# 忽略所有 .DS_Store 文件
 .DS_Store
