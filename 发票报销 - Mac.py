@@ -89,20 +89,25 @@ def extract_invoice_data(path):
                     quantity += int(next_line)
                     data["数量"] = quantity
                     data["单位"] = line if line not in r"套包盒批份次" else line + "❌"
- 
 
     # ======== 金额：提取所有 ¥开头的金额 ========
-    #查找以¥开头的数字，取最大值
-
-    amounts = re.findall(r"¥\s*(\d+\.\d{2})", full_text)
-    data["金额"] = max(amounts) if amounts else ""
+    amounts = re.findall(r"¥*(\d+\.\d{2})", full_text)
+    max_amount = 0
+    try:
+        for amount in amounts:
+            if float(amount) > max_amount:
+                max_amount = float(amount)
+    except Exception as e:
+        print(e)
+        max_amount = 0
+    data["金额"] = max_amount
 
 
     # ======== 单价 ======== 
     # 金额 / 数量
 
     try:
-        ave = round(float(max(amounts)) / int(quantity),2)
+        ave = round(max_amount / int(quantity),2)
     except Exception as e:
         print(f'   ⛔️ {path} 无单价')
         ave = 0
@@ -493,7 +498,7 @@ class InvoiceWindow(QMainWindow):
         title.setStyleSheet("color: #ffffff;")
         header_layout.addWidget(title)
 
-        version = QLabel("机器人实验室 · 发票报销小程序 v4.0")
+        version = QLabel("机器人实验室 · 发票报销小程序 v4.1")
         version.setAlignment(Qt.AlignCenter)
         version.setStyleSheet("color: #FECACA; font-size: 13px;")
         header_layout.addWidget(version)

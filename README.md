@@ -1,8 +1,9 @@
-# 发票报销助手 
+<h1 align="center">发票报销助手</h1>
+
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-4.0-red" alt="Version">
-  <img src="https://img.shields.io/badge/python-3.13%2B-blue" alt="Python">
+  <img src="https://img.shields.io/badge/version-4.1-red" alt="Version">
+  <img src="https://img.shields.io/badge/python-3.8%2B-blue" alt="Python">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey" alt="Platform">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
 </p>
@@ -13,12 +14,25 @@
 
 ---
 
+## 🧭 版本演进
+
+| 版本 | 形式 | 时间 |主要特性 |
+|:---:|:---|:---|:---|
+| 1.0 | Jupyter Notebook | 2025-12 | 基础 PDF 提取 + Excel 输出 |
+| 2.0 | Python CLI | 2026-02 |批量处理、路径自定义 |
+| 3.0 | PyQt5 GUI | 2026-05 |图形界面、拖拽导入、双平台支持 |
+| 3.4 | PyQt5 GUI | 2026-05|优化文件大小 |
+| 4.0 | PyQt5 GUI + .app | 2026-05 |列顺序自定义、UI 焕新、windows + macOS 打包 |
+| **4.1** | **PyQt5 GUI + .app** | 2026-05 |**修复金额提取问题，不要使用4.1以前的版本！** |
+---
+
 ## 📋 项目简介
 
 本项目是 **SJTU VEX 机器人实验室** 内部使用的发票报销辅助工具，基于 Python + PyQt5 开发，支持 **macOS** 和 **Windows** 双平台。它可以批量读取 PDF 格式的电子发票，自动提取关键字段并生成结构化的 Excel 报销明细表，大幅提升财务报销效率。
 
 > 💡 从 Jupyter Notebook 原型开始，历经 4 个版本迭代，现已打包为可直接运行的桌面应用程序。
 
+> ⛔️ **不支持图片（JPG、PNG等）转PDF的发票文件** ⛔️
 ---
 
 ## ✨ 核心功能
@@ -55,7 +69,7 @@
 ```
 ┌─────────────────────────────────────────┐
 │     低值及耗材类采购申请明细                │
-│     机器人实验室 发票报销小程序v4.0         │
+│     机器人实验室 发票报销小程序v4.1         │
 ├─────────────────────────────────────────┤
 │                                         │
 │   ┌─────────────────────────────────┐   │
@@ -63,7 +77,7 @@
 │   │  或点击下方按钮选择文件             │   │
 │   └─────────────────────────────────┘   │
 │                                         │
-│   [  选择 PDF 文件  ]  [  清空列表  ]      │
+│   [  选择 PDF 文件  ]  [  清空列表  ]     │
 │                                         │
 │   待处理文件                    0 个文件   │
 │   ┌─────────────────────────────────┐   │
@@ -88,7 +102,7 @@
 #### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/kaisch314-ops/invoice.git
+git clone https://github.com/kaisch314-ops/Invoice.git
 ```
 
 #### 2. 安装依赖
@@ -111,7 +125,7 @@ python "发票报销 - Win.py"
 
 ### 方式二：运行打包好的应用（macOS）
 
-双击 `发票报销4.0.app` 即可启动，无需安装 Python 环境。
+双击 `发票报销4.1.app` 即可启动，无需安装 Python 环境。
 
 > ⚠️ 如果提示「无法打开」，请前往 **系统设置 → 隐私与安全性** 中允许运行。
 
@@ -121,9 +135,9 @@ python "发票报销 - Win.py"
 
 ```
 invoice-reimbursement/
-├── 发票报销 - Mac.py          # macOS 版主程序（v4.0，支持列自定义）
-├── 发票报销 - Win.py          # Windows 版主程序（v3.4）
-├── 发票报销4.0.app/           # macOS 打包应用（PyInstaller）
+├── 发票报销 - Mac.py          # macOS 版主程序（v4.1，支持列自定义）
+├── 发票报销 - Win.py          # Windows 版主程序（v4.1）
+├── 发票报销4.1.app/           # macOS 打包应用（PyInstaller）
 ├── SJTU-VEX发票报销.ipynb      # Jupyter Notebook 原型与开发记录
 ├── 202605低值及耗材类采购申请明细.xlsx   # 输出示例
 └── README.md
@@ -140,7 +154,7 @@ invoice-reimbursement/
 pip install pyinstaller
 
 # 打包为 .app
-pyinstaller --windowed --onefile --name "发票报销4.0" \
+pyinstaller --windowed --onefile --name "发票报销4.1" \
   --icon icon.icns \
   "发票报销 - Mac.py"
 ```
@@ -185,18 +199,6 @@ pyinstaller --windowed --onefile --name "发票报销" \
 - **数据处理**: [pandas](https://pandas.pydata.org/)
 - **Excel 导出**: [openpyxl](https://openpyxl.readthedocs.io/)
 - **打包工具**: [PyInstaller](https://pyinstaller.org/)
-
----
-
-## 版本演进
-
-| 版本 | 形式 | 主要特性 |
-|:---:|:---|:---|
-| 1.0 | Jupyter Notebook | 基础 PDF 提取 + Excel 输出 |
-| 2.0 | Python CLI | 批量处理、路径自定义 |
-| 3.0 | PyQt5 GUI | 图形界面、拖拽导入、双平台支持 |
-| 3.4 | PyQt5 GUI | 优化文件大小 |
-| **4.0** | **PyQt5 GUI + .app** | **列顺序自定义、UI 焕新、windows + macOS 打包** |
 
 ---
 
