@@ -2,7 +2,7 @@
 
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-4.1-red" alt="Version">
+  <img src="https://img.shields.io/badge/version-4.2-red" alt="Version">
   <img src="https://img.shields.io/badge/python-3.8%2B-blue" alt="Python">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey" alt="Platform">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
@@ -24,6 +24,7 @@
 | 3.4 | PyQt5 GUI | 2026-05|优化文件大小 |
 | 4.0 | PyQt5 GUI + .app | 2026-05 |列顺序自定义、UI 焕新、windows + macOS 打包 |
 | **4.1** | **PyQt5 GUI + .app** | 2026-05 |**修复金额提取问题，不要使用4.1以前的版本！** |
+| **4.2** | **PyQt5 GUI + .app** | 2026-10 |**自动识别并去重重复发票号码；优化付款人识别兼容性（文件名首尾空格不再影响）** |
 ---
 
 ## 📋 项目简介
@@ -39,6 +40,8 @@
 
 | 功能 | 说明 |
 |:---|:---|
+| 🧹 **重复发票自动去重** | 自动识别重复的发票号码，避免同一张发票被重复报销 |
+| 🔧 **付款人识别优化** | 文件名中的付款人字段自动去除首尾空格，兼容性更强 |
 | 📄 **批量 PDF 导入** | 支持文件选择对话框或拖拽方式批量导入发票 |
 | 🔍 **智能信息提取** | 自动识别发票号码、开票日期、供应商、金额、数量、单位等 |
 | 🏷️ **自动类型判断** | 根据单价智能区分「易耗品」与「低值」资产 |
@@ -69,7 +72,7 @@
 ```
 ┌─────────────────────────────────────────┐
 │     低值及耗材类采购申请明细                │
-│     机器人实验室 发票报销小程序v4.1         │
+│     机器人实验室 发票报销小程序v4.2         │
 ├─────────────────────────────────────────┤
 │                                         │
 │   ┌─────────────────────────────────┐   │
@@ -135,9 +138,9 @@ python "发票报销 - Win.py"
 
 ```
 invoice-reimbursement/
-├── 发票报销 - Mac.py          # macOS 版主程序（v4.1，支持列自定义）
+├── 发票报销 - Mac.py          # macOS 版主程序（v4.2，支持列自定义）
 ├── 发票报销 - Win.py          # Windows 版主程序（v4.1）
-├── 发票报销4.1.app/           # macOS 打包应用（PyInstaller）
+├── 发票报销4.2.app/           # macOS 打包应用（PyInstaller）
 ├── SJTU-VEX发票报销.ipynb      # Jupyter Notebook 原型与开发记录
 ├── 202605低值及耗材类采购申请明细.xlsx   # 输出示例
 └── README.md
@@ -154,7 +157,7 @@ invoice-reimbursement/
 pip install pyinstaller
 
 # 打包为 .app
-pyinstaller --windowed --onefile --name "发票报销4.1" \
+pyinstaller --windowed --onefile --name "发票报销4.2" \
   --icon icon.icns \
   "发票报销 - Mac.py"
 ```

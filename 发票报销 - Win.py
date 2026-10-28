@@ -182,6 +182,16 @@ def process_pdfs_to_excel(file_paths, save_path):
             df[col] = ""
     df = df[columns]
 
+    # 按发票号码去重，保留第一次出现的记录
+    # 未识别出发票号码（⛔️）的记录保留，避免被误删
+    def _dedup_key(row):
+        inv = row["发票号码"]
+        return None if inv == "⛔️" or not inv else inv
+
+    df["_dedup_key"] = df.apply(_dedup_key, axis=1)
+    df = df.drop_duplicates(subset=["_dedup_key"], keep="first", ignore_index=True)
+    df = df.drop(columns=["_dedup_key"])
+
     df["金额"] = pd.to_numeric(df["金额"], errors="coerce")
 
     summary = df.groupby("付款人", as_index=False)["金额"].sum()
@@ -232,7 +242,7 @@ class Worker(QThread):
 class InvoiceWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("机器人实验室发票报销小程序 · v4.1")
+        self.setWindowTitle("机器人实验室发票报销小程序 · v4.2")
         self.setGeometry(543, 124, 600, 800)
         self.setAcceptDrops(True)
 

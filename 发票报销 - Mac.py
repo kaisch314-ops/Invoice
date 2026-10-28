@@ -34,7 +34,7 @@ def extract_invoice_data(path):
     name_without_ext = os.path.splitext(filename)[0] 
 
     parts = name_without_ext.split('-')
-    candidate = parts[-1]  
+    candidate = parts[-1].strip()  
     data["付款人"] = candidate if candidate else ""
 
 
@@ -180,6 +180,16 @@ def process_pdfs_to_excel(file_paths, save_path, columns_order=None):
     for col in default_columns:
         if col not in df.columns:
             df[col] = ""
+
+    # 按发票号码去重，保留第一次出现的记录
+    # 未识别出发票号码（⛔️）的记录保留，避免被误删
+    def _dedup_key(row):
+        inv = row["发票号码"]
+        return None if inv == "⛔️" or not inv else inv
+
+    df["_dedup_key"] = df.apply(_dedup_key, axis=1)
+    df = df.drop_duplicates(subset=["_dedup_key"], keep="first", ignore_index=True)
+    df = df.drop(columns=["_dedup_key"])
     
     # 先计算汇总（使用完整数据，不受用户删除列的影响）
     df["金额"] = pd.to_numeric(df["金额"], errors="coerce")
@@ -498,7 +508,7 @@ class InvoiceWindow(QMainWindow):
         title.setStyleSheet("color: #ffffff;")
         header_layout.addWidget(title)
 
-        version = QLabel("机器人实验室 · 发票报销小程序 v4.1")
+        version = QLabel("机器人实验室 · 发票报销小程序 v4.2")
         version.setAlignment(Qt.AlignCenter)
         version.setStyleSheet("color: #FECACA; font-size: 13px;")
         header_layout.addWidget(version)
