@@ -614,6 +614,9 @@ class InvoiceWindow(QMainWindow):
 
         # 文件列表
         self.list_widget = QListWidget()
+        self.list_widget.setVerticalScrollMode(QListWidget.ScrollPerPixel)
+        self.list_widget.setAlternatingRowColors(False)
+        self.list_widget.setFocusPolicy(Qt.NoFocus)
         self.list_widget.setStyleSheet("""
             QListWidget {
                 border: 1px solid #E5E7EB;
@@ -621,42 +624,66 @@ class InvoiceWindow(QMainWindow):
                 padding: 8px;
                 font-size: 13px;
                 background-color: #ffffff;
+                outline: none;
             }
             QListWidget::item {
-                padding: 10px 12px;
-                margin: 3px 0px;
-                border-radius: 6px;
+                padding: 0px;
+                margin: 4px 0px;
+                border-radius: 10px;
                 border: none;
                 color: #374151;
+                background-color: #ffffff;
+                outline: none;
             }
             QListWidget::item:selected {
-                background-color: #FEE2E2;
+                background-color: #F3F4F6;
                 color: #B91C1C;
+                outline: none;
             }
             QListWidget::item:hover {
-                background-color: #F9FAFB;
+                background-color: #F3F4F6;
+                outline: none;
+            }
+            QListWidget::item:selected:!active {
+                background-color: #F3F4F6;
+                outline: none;
+            }
+            QListWidget::item:selected:active {
+                background-color: #F3F4F6;
+                outline: none;
+            }
+            QListWidget::item:!active {
+                background-color: #ffffff;
+                outline: none;
+            }
+            QListWidget::item:focus {
+                background-color: #F3F4F6;
+                outline: none;
+                border: none;
+            }
+            QScrollBar:vertical {
+                background: transparent;
+                width: 6px;
+                border-radius: 3px;
+                margin: 3px 2px 3px 0;
+            }
+            QScrollBar::handle:vertical {
+                background: #D1D5DB;
+                min-height: 24px;
+                border-radius: 3px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #9CA3AF;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+                background: transparent;
+            }
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background: transparent;
             }
         """)
         body_layout.addWidget(self.list_widget, stretch=1)
-
-        # 进度条
-        self.progress = QProgressBar()
-        self.progress.setValue(0)
-        self.progress.setTextVisible(True)
-        self.progress.setFixedHeight(8)
-        self.progress.setStyleSheet("""
-            QProgressBar {
-                border: none;
-                border-radius: 4px;
-                text-align: center;
-                background-color: #E5E7EB;
-            }
-            QProgressBar::chunk {
-                background-color: #B91C1C;
-                border-radius: 4px;
-            }
-        """)
-        body_layout.addWidget(self.progress)
 
         # 生成按钮
         self.btn_run = QPushButton("生成 Excel 明细")
@@ -710,10 +737,7 @@ class InvoiceWindow(QMainWindow):
         for url in event.mimeData().urls():
             path = url.toLocalFile()
             if path.lower().endswith('.pdf') and path not in self.pdf_files:
-                self.pdf_files.append(path)
-                item = QListWidgetItem(f"  {os.path.basename(path)}")
-                item.setToolTip(path)
-                self.list_widget.addItem(item)
+                self._add_file_item(path)
         self._update_status()
 
     # ================== 文件操作 ==================
@@ -723,10 +747,70 @@ class InvoiceWindow(QMainWindow):
         )
         for path in paths:
             if path not in self.pdf_files:
-                self.pdf_files.append(path)
-                item = QListWidgetItem(f"  {os.path.basename(path)}")
-                item.setToolTip(path)
-                self.list_widget.addItem(item)
+                self._add_file_item(path)
+        self._update_status()
+
+    def _add_file_item(self, path):
+        self.pdf_files.append(path)
+        item = QListWidgetItem()
+        item.setSizeHint(QSize(0, 40))
+        self.list_widget.addItem(item)
+
+        widget = QWidget()
+        widget.setAttribute(Qt.WA_StyledBackground, True)
+        hlayout = QHBoxLayout(widget)
+        hlayout.setContentsMargins(12, 0, 0, 0)
+        hlayout.setSpacing(8)
+        hlayout.setAlignment(Qt.AlignVCenter)
+
+        widget.setStyleSheet("background-color: #ffffff; border-radius: 10px;")
+
+        name_label = QLabel(f"  {os.path.basename(path)}")
+        name_label.setFixedHeight(40)
+        name_label.setAlignment(Qt.AlignVCenter)
+        name_label.setStyleSheet("font-size: 13px; color: #374151; border: none; background: transparent; padding-bottom: 10px;")
+        hlayout.addWidget(name_label, stretch=1)
+
+        lbl_delete = QLabel("✕")
+        lbl_delete.setFixedSize(44, 32)
+        lbl_delete.setAlignment(Qt.AlignCenter)
+        lbl_delete.setCursor(Qt.PointingHandCursor)
+        lbl_delete.setStyleSheet("""
+            QLabel {
+                background-color: #EF4444;
+                color: #ffffff;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: bold;
+                padding-bottom: 2px;
+            }
+            QLabel:hover {
+                background-color: #DC2626;
+            }
+        """)
+        lbl_delete.setVisible(False)
+        lbl_delete.mousePressEvent = lambda event, i=item: self._delete_file_item(i)
+        hlayout.addWidget(lbl_delete, 0, Qt.AlignVCenter)
+
+        self.list_widget.setItemWidget(item, widget)
+
+        # 电视悬停时：整行变为灰色背景，并显示删除按钮
+        def _enter(event):
+            widget.setStyleSheet("background-color: #F3F4F6; border-radius: 10px;")
+            lbl_delete.setVisible(True)
+
+        def _leave(event):
+            widget.setStyleSheet("background-color: #ffffff; border-radius: 10px;")
+            lbl_delete.setVisible(False)
+
+        widget.enterEvent = _enter
+        widget.leaveEvent = _leave
+
+    def _delete_file_item(self, item):
+        row = self.list_widget.row(item)
+        if 0 <= row < len(self.pdf_files):
+            self.pdf_files.pop(row)
+        self.list_widget.takeItem(row)
         self._update_status()
 
     def clear_files(self):
@@ -793,10 +877,8 @@ class InvoiceWindow(QMainWindow):
         self.btn_add.setEnabled(False)
         self.btn_clear.setEnabled(False)
         self.status.setText("正在提取数据，请稍候...")
-        self.progress.setValue(0)
 
         self.worker = Worker(self.pdf_files, save_path, columns_order)
-        self.worker.progress.connect(self.progress.setValue)
         self.worker.finished.connect(self.on_success)
         self.worker.error.connect(self.on_error)
         self.worker.start()
@@ -806,7 +888,6 @@ class InvoiceWindow(QMainWindow):
         self.btn_add.setEnabled(True)
         self.btn_clear.setEnabled(True)
         self.status.setText("KAISEN ©")
-        self.progress.setValue(100)
 
         msg_box = QMessageBox(self)
         msg_box.setWindowTitle("处理完成")
@@ -842,7 +923,6 @@ class InvoiceWindow(QMainWindow):
         self.btn_run.setEnabled(True)
         self.btn_add.setEnabled(True)
         self.btn_clear.setEnabled(True)
-        self.progress.setValue(0)
         self.status.setText("KAISEN ©")
         
         msg_box = QMessageBox(self)
